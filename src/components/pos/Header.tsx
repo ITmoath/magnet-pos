@@ -2,13 +2,17 @@
 
 import { useEffect, useState } from 'react'
 import Image from 'next/image'
+import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Bell, Wifi, WifiOff } from 'lucide-react'
+import { Bell, ChefHat, ListTodo, Wifi, WifiOff } from 'lucide-react'
 import { usePOSStore, useOnlineOrders } from '@/store/usePOSStore'
+import { useBranchTasksStore, selectIncompleteTasksCount } from '@/store/useBranchTasksStore'
 
 export default function POSHeader() {
   const { pendingCount } = useOnlineOrders()
   const isConnected = usePOSStore((s) => s.isConnected)
+  const kitchenCount = usePOSStore((s) => s.kitchenTickets.length)
+  const tasksIncomplete = useBranchTasksStore((s) => selectIncompleteTasksCount(s))
 
   return (
     <header
@@ -36,7 +40,7 @@ export default function POSHeader() {
       </div>
 
       {/* ===== Status Indicators ===== */}
-      <div className="flex items-center gap-2.5">
+      <div className="flex items-center gap-2.5 flex-wrap justify-end">
         {/* Online Orders Badge */}
         <AnimatePresence>
           {pendingCount > 0 && (
@@ -72,6 +76,34 @@ export default function POSHeader() {
 
         {/* Live Clock */}
         <LiveClock />
+
+        {/* المهام — بجانب المطبخ */}
+        <Link
+          href="/pos/tasks"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 hover:bg-white/25 text-white text-xs font-bold transition-colors border border-white/20 relative"
+        >
+          <ListTodo size={14} className="shrink-0" />
+          <span className="hidden sm:inline">المهام</span>
+          {tasksIncomplete > 0 && (
+            <span className="absolute -top-1 -left-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-amber-500 text-[10px] font-extrabold text-[#24275D] border-2 border-[#24275D]">
+              {tasksIncomplete > 99 ? '99+' : tasksIncomplete}
+            </span>
+          )}
+        </Link>
+
+        {/* شاشة المطبخ */}
+        <Link
+          href="/pos/kitchen"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 hover:bg-white/25 text-white text-xs font-bold transition-colors border border-white/20 relative"
+        >
+          <ChefHat size={14} className="shrink-0" />
+          <span className="hidden sm:inline">شاشة المطبخ</span>
+          {kitchenCount > 0 && (
+            <span className="absolute -top-1 -left-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-[#D22128] text-[10px] font-extrabold text-white border-2 border-[#24275D]">
+              {kitchenCount > 99 ? '99+' : kitchenCount}
+            </span>
+          )}
+        </Link>
       </div>
     </header>
   )

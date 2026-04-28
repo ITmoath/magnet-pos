@@ -1,8 +1,9 @@
 'use client'
 
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Banknote, CreditCard, Wallet, Loader2, CheckCircle2 } from 'lucide-react'
-import { useState } from 'react'
+import { X, Banknote, CreditCard, Wallet, Loader2 } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { usePOSStore } from '@/store/usePOSStore'
 import { useCart } from '@/store/usePOSStore'
 import type { PaymentMethod } from '@/lib/supabase'
@@ -14,6 +15,7 @@ const PAYMENT_METHODS: { id: PaymentMethod; label: string; icon: React.ReactNode
 ]
 
 export default function PaymentModal() {
+  const router = useRouter()
   const isOpen = usePOSStore((s) => s.isPaymentModalOpen)
   const closeModal = usePOSStore((s) => s.closePaymentModal)
   const checkoutOrder = usePOSStore((s) => s.checkoutOrder)
@@ -21,16 +23,20 @@ export default function PaymentModal() {
   const { total, tax, subtotal } = useCart()
 
   const [selected, setSelected] = useState<PaymentMethod>('cash')
-  const [success, setSuccess] = useState(false)
+  const [checkoutError, setCheckoutError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (isOpen) setCheckoutError(null)
+  }, [isOpen])
 
   const handleConfirm = async () => {
+    setCheckoutError(null)
     const result = await checkoutOrder(selected)
     if (result.success) {
-      setSuccess(true)
-      setTimeout(() => {
-        setSuccess(false)
-        setSelected('cash')
-      }, 2000)
+      setSelected('cash')
+      router.push('/pos/kitchen')
+    } else {
+      setCheckoutError('تعذر إتمام الدفع. تحقق من السلة وحاول مرة أخرى.')
     }
   }
 
@@ -63,29 +69,20 @@ export default function PaymentModal() {
               </button>
             </div>
 
-            {/* Success State */}
-            <AnimatePresence>
-              {success && (
-                <motion.div
-                  className="absolute inset-0 flex flex-col items-center justify-center bg-white z-10 gap-4"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                >
-                  <motion.div
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    transition={{ type: 'spring', stiffness: 400, damping: 20 }}
-                  >
-                    <CheckCircle2 size={72} className="text-emerald-500" />
-                  </motion.div>
-                  <p className="text-xl font-bold text-gray-800">تم الدفع بنجاح!</p>
-                  <p className="text-gray-500 text-sm">جاري طباعة الفاتورة...</p>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
             <div className="p-6 space-y-6">
+              <AnimatePresence>
+                {checkoutError && (
+                  <motion.p
+                    initial={{ opacity: 0, y: -6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    className="text-sm text-center font-medium text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2"
+                  >
+                    {checkoutError}
+                  </motion.p>
+                )}
+              </AnimatePresence>
+
               {/* Summary */}
               <div className="bg-slate-50 rounded-xl p-4 space-y-2 text-sm">
                 <div className="flex justify-between text-gray-600">
@@ -129,6 +126,7 @@ export default function PaymentModal() {
 
               {/* Confirm Button */}
               <button
+                type="button"
                 onClick={handleConfirm}
                 disabled={isProcessing}
                 className="w-full flex items-center justify-center gap-2 py-4 rounded-xl bg-[#D22128] hover:bg-[#b81c22] text-white font-bold text-base transition-colors disabled:opacity-60"

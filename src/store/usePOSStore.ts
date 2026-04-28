@@ -2,6 +2,20 @@ import { create } from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 import { supabase, type Order, type OrderItem, type PaymentMethod } from '@/lib/supabase'
 
+export interface KitchenTicketItem {
+  name: string
+  quantity: number
+  category: string
+  ingredients: string[]
+}
+
+export interface KitchenTicket {
+  id: string
+  orderNumber: string
+  createdAt: string
+  items: KitchenTicketItem[]
+}
+
 export interface CartItem extends OrderItem {
   subtotal: number
 }
@@ -39,11 +53,15 @@ export interface POSStore {
 
   // إتمام الطلب
   isProcessing: boolean
-  checkoutOrder: (paymentMethod: PaymentMethod) => Promise<{ success: boolean; orderId?: string }>
+  checkoutOrder: (paymentMethod: PaymentMethod) => Promise<{ success: boolean; orderId?: string; orderNumber?: string }>
 
   // الفلتر النشط
   activeCategory: string
   setActiveCategory: (category: string) => void
+
+  // شاشة المطبخ — طلبات جاهزة للتجهيز بعد إتمام الدفع
+  kitchenTickets: KitchenTicket[]
+  removeKitchenTicket: (id: string) => void
 }
 
 const TAX_RATE = 0.15
@@ -162,37 +180,70 @@ export const usePOSStore = create<POSStore>((set, get) => ({
 
     set({ isProcessing: true })
 
-    const orderNumber = `POS-${Date.now()}`
-    const newOrder = {
-      order_number: orderNumber,
-      items: cart,
-      subtotal: Math.round(subtotal * 100) / 100,
-      tax: Math.round(tax * 100) / 100,
-      total: Math.round(total * 100) / 100,
-      status: 'completed',
-      order_source: 'pos',
-      payment_method: paymentMethod,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+    try {
+      const orderNumber = `POS-${Date.now()}`
+
+      const itemsForDb = cart.map(({ id, name, price, quantity, category, ingredients }) => ({
+        id,
+        name,
+        price,
+        quantity,
+        category,
+        ...(ingredients?.length ? { ingredients } : {}),
+      }))
+
+      const ticket: KitchenTicket = {
+        id: `k-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+        orderNumber,
+        createdAt: new Date().toISOString(),
+        items: cart.map((i) => ({
+          name: i.name,
+          quantity: i.quantity,
+          category: i.category,
+          ingredients: i.ingredients?.length ? i.ingredients : [],
+        })),
+      }
+
+      set((state) => ({ kitchenTickets: [ticket, ...state.kitchenTickets] }))
+      clearCart()
+      closePaymentModal()
+
+      const row = {
+        order_number: orderNumber,
+        items: itemsForDb,
+        subtotal: Math.round(subtotal * 100) / 100,
+        tax: Math.round(tax * 100) / 100,
+        total: Math.round(total * 100) / 100,
+        status: 'completed' as const,
+        order_source: 'pos' as const,
+        payment_method: paymentMethod,
+        updated_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+      }
+
+      void supabase
+        .from('orders')
+        .insert(row)
+        .then(({ error }) => {
+          if (error) console.error('Checkout sync (Supabase):', error)
+        })
+
+      return { success: true, orderNumber }
+    } finally {
+      set({ isProcessing: false })
     }
-
-    const { data, error } = await supabase.from('orders').insert(newOrder).select().single()
-
-    set({ isProcessing: false })
-
-    if (error) {
-      console.error('Checkout error:', error)
-      return { success: false }
-    }
-
-    clearCart()
-    closePaymentModal()
-    return { success: true, orderId: data?.id }
   },
 
   // --- Category Filter ---
   activeCategory: 'all',
   setActiveCategory: (category) => set({ activeCategory: category }),
+
+  kitchenTickets: [] as KitchenTicket[],
+  removeKitchenTicket: (id) => {
+    set((state) => ({
+      kitchenTickets: state.kitchenTickets.filter((t) => t.id !== id),
+    }))
+  },
 }))
 
 // --- Shallow selectors (تمنع infinite render loop) ---

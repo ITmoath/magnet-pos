@@ -1,5 +1,7 @@
 'use client'
 
+import { useEffect } from 'react'
+import Image from 'next/image'
 import { motion, type Variants } from 'framer-motion'
 import { Plus, ShoppingBag } from 'lucide-react'
 import { usePOSStore, useCartActions } from '@/store/usePOSStore'
@@ -9,38 +11,121 @@ export interface Product {
   name: string
   price: number
   category: string
+  /** مسار الصورة تحت `public`، مثال: `/menu/classic-beef.png` */
+  image?: string
   emoji: string
   description?: string
+  ingredients: string[]
 }
 
 const CATEGORIES = [
   { id: 'all', label: 'الكل' },
   { id: 'burger', label: '🍔 برجر' },
-  { id: 'pizza', label: '🍕 بيتزا' },
-  { id: 'sandwich', label: '🥪 ساندويش' },
-  { id: 'drinks', label: '🥤 مشروبات' },
-  { id: 'desserts', label: '🍰 حلويات' },
   { id: 'sides', label: '🍟 مقبلات' },
+  { id: 'drinks', label: '🥤 مشروبات' },
 ]
 
 const PRODUCTS: Product[] = [
-  { id: 'p1', name: 'برجر كلاسيك', price: 32, category: 'burger', emoji: '🍔', description: 'لحم بقري 150جم مع جبن شيدر' },
-  { id: 'p2', name: 'برجر دبل', price: 45, category: 'burger', emoji: '🍔', description: 'قطعتان لحم مع صلصة سرية' },
-  { id: 'p3', name: 'برجر دجاج', price: 28, category: 'burger', emoji: '🍗', description: 'دجاج مقرمش مع كول سلو' },
-  { id: 'p4', name: 'بيتزا مارغريتا', price: 45, category: 'pizza', emoji: '🍕', description: 'صلصة طماطم وجبن موتزاريلا' },
-  { id: 'p5', name: 'بيتزا بيبروني', price: 55, category: 'pizza', emoji: '🍕', description: 'بيبروني وجبن موتزاريلا مضاعف' },
-  { id: 'p6', name: 'بيتزا خضار', price: 42, category: 'pizza', emoji: '🥦', description: 'خضار طازجة متنوعة' },
-  { id: 'p7', name: 'ساندويش كلوب', price: 22, category: 'sandwich', emoji: '🥪', description: 'دجاج وخس وطماطم' },
-  { id: 'p8', name: 'ساندويش تونة', price: 18, category: 'sandwich', emoji: '🥙', description: 'تونة مع مايونيز وخضار' },
-  { id: 'p9', name: 'كولا', price: 8, category: 'drinks', emoji: '🥤', description: '330مل' },
-  { id: 'p10', name: 'عصير برتقال', price: 15, category: 'drinks', emoji: '🍊', description: 'طازج 100%' },
-  { id: 'p11', name: 'شاي', price: 6, category: 'drinks', emoji: '🍵', description: 'أكواب سريعة' },
-  { id: 'p12', name: 'قهوة', price: 12, category: 'drinks', emoji: '☕', description: 'إسبريسو أو أمريكانو' },
-  { id: 'p13', name: 'كيك شوكولاتة', price: 18, category: 'desserts', emoji: '🍰', description: 'قطعة فاخرة' },
-  { id: 'p14', name: 'آيس كريم', price: 12, category: 'desserts', emoji: '🍦', description: 'فانيليا أو شوكولاتة' },
-  { id: 'p15', name: 'بطاطس كبيرة', price: 14, category: 'sides', emoji: '🍟', description: 'مقرمشة ومملحة' },
-  { id: 'p16', name: 'حلقات بصل', price: 16, category: 'sides', emoji: '🧅', description: 'مع صلصة الغمس' },
+  {
+    id: 'b-beef',
+    name: 'برجر لحم بقري',
+    price: 36,
+    category: 'burger',
+    image: '/menu/classic-beef.png',
+    emoji: '🥩',
+    description: 'عرض لحم بقري مفروم 180جم',
+    ingredients: [
+      'خبز برجر',
+      'لحم بقري مفروم 180جم',
+      'جبن أمريكي',
+      'بصل أحمر',
+      'خس',
+      'كاتشب وماسترد',
+    ],
+  },
+  {
+    id: 'b-crispy',
+    name: 'برجر كرسبي',
+    price: 34,
+    category: 'burger',
+    image: '/menu/crispy.png',
+    emoji: '🍗',
+    description: 'صدر دجاج مقرمش',
+    ingredients: [
+      'خبز برجر',
+      'فيليه دجاج كرسبي',
+      'مايونيز حار',
+      'خس',
+      'مخلل',
+      'جبن شيدر (اختياري)',
+    ],
+  },
+  {
+    id: 'b-broast',
+    name: 'بروست',
+    price: 35,
+    category: 'burger',
+    image: '/menu/broast.png',
+    emoji: '🍗',
+    description: 'صدر دجاج بروست مقلي',
+    ingredients: [
+      'خبز برجر',
+      'صدر دجاج بروست متبل',
+      'مايونيز',
+      'خس',
+      'شرائح طماطم',
+      'مخلل',
+    ],
+  },
+  {
+    id: 'side-chicken-fries',
+    name: 'تشكن فرايز',
+    price: 18,
+    category: 'sides',
+    image: '/menu/chicken-fries.png',
+    emoji: '🐔',
+    description: 'شرائح دجاج مقرمشة',
+    ingredients: [
+      'شرائح دجاج بانِد',
+      'تغليف كرسبي',
+      'توابل',
+      'زيت القلي',
+      'صلصة باربيكيو أو رانش',
+    ],
+  },
+  {
+    id: 'd-water',
+    name: 'موية',
+    price: 3,
+    category: 'drinks',
+    image: '/menu/water.png',
+    emoji: '💧',
+    description: 'ماء معقول',
+    ingredients: ['ماء معبأ أو كوب حسب الطلب', 'ثلج (اختياري)'],
+  },
+  {
+    id: 'd-pepsi',
+    name: 'ببسي',
+    price: 6,
+    category: 'drinks',
+    image: '/menu/pepsi.png',
+    emoji: '🥤',
+    description: 'مشروب غازي',
+    ingredients: ['مشروب ببسي جاهز', 'تبريد', 'ثلج', 'قشة (اختياري)'],
+  },
+  {
+    id: 'd-citrus',
+    name: 'حمضيات',
+    price: 7,
+    category: 'drinks',
+    image: '/menu/citrus.png',
+    emoji: '🍋',
+    description: 'مشروب حمضيات',
+    ingredients: ['حمضيات (برتقال، ليمون، جريب فروت)', 'ماء أو صودا', 'سكر خفيف', 'ثلج'],
+  },
 ]
+
+const VALID_CATEGORY_IDS = new Set(CATEGORIES.map((c) => c.id))
 
 const containerVariants: Variants = {
   hidden: {},
@@ -61,9 +146,14 @@ export default function ProductGrid() {
   const setActiveCategory = usePOSStore((s) => s.setActiveCategory)
   const { addToCart } = useCartActions()
 
-  const filtered = activeCategory === 'all'
-    ? PRODUCTS
-    : PRODUCTS.filter((p) => p.category === activeCategory)
+  useEffect(() => {
+    if (!VALID_CATEGORY_IDS.has(activeCategory)) {
+      setActiveCategory('all')
+    }
+  }, [activeCategory, setActiveCategory])
+
+  const filtered =
+    activeCategory === 'all' ? PRODUCTS : PRODUCTS.filter((p) => p.category === activeCategory)
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -103,7 +193,15 @@ export default function ProductGrid() {
               <ProductCard
                 key={product.id}
                 product={product}
-                onAdd={() => addToCart({ id: product.id, name: product.name, price: product.price, category: product.category })}
+                onAdd={() =>
+                  addToCart({
+                    id: product.id,
+                    name: product.name,
+                    price: product.price,
+                    category: product.category,
+                    ingredients: product.ingredients,
+                  })
+                }
               />
             ))}
           </motion.div>
@@ -120,9 +218,21 @@ function ProductCard({ product, onAdd }: { product: Product; onAdd: () => void }
       whileTap={{ scale: 0.97 }}
       className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-[#24275D]/20 transition-all overflow-hidden group"
     >
-      {/* Emoji Banner */}
-      <div className="bg-gradient-to-br from-slate-50 to-gray-100 flex items-center justify-center text-5xl py-5 group-hover:from-[#24275D]/5 group-hover:to-[#24275D]/10 transition-colors">
-        {product.emoji}
+      {/* صورة الوجبة أو الإيموجي كاحتياط */}
+      <div className="relative h-36 w-full overflow-hidden bg-gradient-to-br from-slate-50 to-gray-100 group-hover:from-[#24275D]/5 group-hover:to-[#24275D]/10 transition-colors">
+        {product.image ? (
+          <Image
+            src={product.image}
+            alt={product.name}
+            fill
+            className="object-cover object-center transition-transform duration-300 group-hover:scale-[1.04]"
+            sizes="(max-width: 768px) 50vw, (max-width: 1280px) 33vw, 280px"
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center text-5xl">
+            {product.emoji}
+          </div>
+        )}
       </div>
 
       {/* Info */}

@@ -30,6 +30,8 @@ export interface OrderItem {
   price: number
   quantity: number
   category: string
+  /** مكونات الوجبة لعرضها في شاشة المطبخ */
+  ingredients?: string[]
 }
 
 export interface Order {
