@@ -23,7 +23,7 @@ export interface POSStore {
   onlineOrders: Order[]
   setOnlineOrders: (orders: Order[]) => void
   addOnlineOrder: (order: Order) => void
-  updateOnlineOrderStatus: (id: string, status: Order['status']) => Promise<void>
+  updateOnlineOrder: (id: string, updates: Partial<Order>) => Promise<void>
 
   // حالة الإشعارات
   pendingCount: number
@@ -113,7 +113,7 @@ export const usePOSStore = create<POSStore>((set, get) => ({
   pendingCount: 0,
 
   setOnlineOrders: (orders) => {
-    const pending = orders.filter((o) => o.status === 'pending').length
+    const pending = orders.filter((o) => o.status === 'new').length
     set({ onlineOrders: orders, pendingCount: pending })
   },
 
@@ -122,23 +122,23 @@ export const usePOSStore = create<POSStore>((set, get) => ({
       const exists = state.onlineOrders.find((o) => o.id === order.id)
       if (exists) return {}
       const newOrders = [order, ...state.onlineOrders]
-      const pending = newOrders.filter((o) => o.status === 'pending').length
+      const pending = newOrders.filter((o) => o.status === 'new').length
       return { onlineOrders: newOrders, pendingCount: pending }
     })
   },
 
-  updateOnlineOrderStatus: async (id, status) => {
+  updateOnlineOrder: async (id, updates) => {
     const { error } = await supabase
       .from('orders')
-      .update({ status, updated_at: new Date().toISOString() })
+      .update({ ...updates, updated_at: new Date().toISOString() })
       .eq('id', id)
 
     if (!error) {
       set((state) => {
         const newOrders = state.onlineOrders.map((o) =>
-          o.id === id ? { ...o, status } : o
+          o.id === id ? { ...o, ...updates } : o
         )
-        const pending = newOrders.filter((o) => o.status === 'pending').length
+        const pending = newOrders.filter((o) => o.status === 'new').length
         return { onlineOrders: newOrders, pendingCount: pending }
       })
     }
