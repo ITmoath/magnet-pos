@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { LayoutGrid, Bell } from 'lucide-react'
+import { LayoutGrid, Bell, UserCheck } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { usePOSStore, useOnlineOrders } from '@/store/usePOSStore'
 
@@ -11,8 +11,9 @@ const ProductGrid = dynamic(() => import('@/components/pos/ProductGrid'), { ssr:
 const CartSidebar = dynamic(() => import('@/components/pos/CartSidebar'), { ssr: false })
 const OnlineOrdersNotification = dynamic(() => import('@/components/pos/OnlineOrdersNotification'), { ssr: false })
 const PaymentModal = dynamic(() => import('@/components/pos/PaymentModal'), { ssr: false })
+const AttendancePanel = dynamic(() => import('@/components/pos/AttendancePanel'), { ssr: false })
 
-type ActivePanel = 'menu' | 'orders'
+type ActivePanel = 'menu' | 'orders' | 'attendance'
 
 export default function POSPage() {
   const [activePanel, setActivePanel] = useState<ActivePanel>('menu')
@@ -24,8 +25,8 @@ export default function POSPage() {
       {/* ===== TOP STATUS BAR ===== */}
       <POSHeader />
 
-      {/* ===== PANEL TABS (Mobile / Narrow) ===== */}
-      <div className="flex md:hidden bg-white border-b border-gray-200 flex-shrink-0">
+      {/* ===== PANEL TABS ===== */}
+      <div className="flex bg-white border-b border-gray-200 flex-shrink-0">
         <TabButton
           active={activePanel === 'menu'}
           onClick={() => setActivePanel('menu')}
@@ -39,26 +40,46 @@ export default function POSPage() {
           label="الطلبات"
           badge={pendingCount}
         />
+        <TabButton
+          active={activePanel === 'attendance'}
+          onClick={() => setActivePanel('attendance')}
+          icon={<UserCheck size={15} />}
+          label="الحضور"
+        />
       </div>
 
       {/* ===== MAIN LAYOUT ===== */}
       <main className="flex-1 flex overflow-hidden">
+        {/* === PRODUCT GRID === */}
+        {activePanel !== 'attendance' && (
+          <section
+            className={`${
+              activePanel === 'menu' ? 'flex' : 'hidden'
+            } md:flex flex-1 overflow-hidden bg-[#F8F9FA] min-w-0`}
+          >
+            <ProductGrid />
+          </section>
+        )}
 
-        {/* === PRODUCT GRID (Center/Right) === */}
-        <section className={`${
-          activePanel === 'menu' ? 'flex' : 'hidden'
-        } md:flex flex-1 overflow-hidden bg-[#F8F9FA]`}>
-          <ProductGrid />
-        </section>
+        {/* === ATTENDANCE === */}
+        {activePanel === 'attendance' && (
+          <section className="flex flex-1 min-w-0 overflow-hidden bg-[#F8F9FA]">
+            <AttendancePanel />
+          </section>
+        )}
 
         {/* === ONLINE ORDERS PANEL === */}
-        <aside className={`${
-          activePanel === 'orders' ? 'flex' : 'hidden'
-        } md:flex w-full md:w-80 xl:w-96 border-l border-gray-200 bg-white overflow-hidden flex-col flex-shrink-0`}>
-          <OnlineOrdersNotification />
-        </aside>
+        {activePanel !== 'attendance' && (
+          <aside
+            className={`${
+              activePanel === 'orders' ? 'flex' : 'hidden'
+            } md:flex w-full md:w-80 xl:w-96 border-l border-gray-200 bg-white overflow-hidden flex-col flex-shrink-0`}
+          >
+            <OnlineOrdersNotification />
+          </aside>
+        )}
 
-        {/* === CART SIDEBAR (Left) === */}
+        {/* === CART SIDEBAR === */}
         <aside className="hidden lg:flex w-80 xl:w-96 border-l border-gray-200 flex-col flex-shrink-0">
           <CartSidebar />
         </aside>

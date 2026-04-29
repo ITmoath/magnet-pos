@@ -77,7 +77,15 @@ export default function ProductGrid() {
               <ProductCard
                 key={product.id}
                 product={product}
-                onAdd={() => addToCart({ id: product.id, name: product.name, price: product.price, category: product.category })}
+                onAdd={() =>
+                  addToCart({
+                    id: product.id,
+                    name: product.name,
+                    price: product.price,
+                    category: product.category,
+                    ingredients: product.ingredients,
+                  })
+                }
               />
             ))}
           </motion.div>
