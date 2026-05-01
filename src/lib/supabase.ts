@@ -28,6 +28,7 @@ export type OrderStatus =
   | 'ready'
   | 'driver_assigned'
   | 'at_restaurant'
+  | 'handed_to_driver'
   | 'customer_arrived'
   | 'shipped'
   | 'completed'
@@ -73,6 +74,7 @@ export interface Order {
   ready_at?: string
   driver_accepted_at?: string
   arrived_at_store_at?: string
+  handed_to_driver_at?: string
   shipped_at?: string
   delivered_at?: string
   created_at: string

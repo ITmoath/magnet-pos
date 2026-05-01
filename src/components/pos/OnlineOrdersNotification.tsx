@@ -2,21 +2,22 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Bell, Wifi, WifiOff, CheckCircle2, XCircle, ChefHat, PackageCheck, Bike, MapPin, UserCheck, Truck } from 'lucide-react'
+import { Bell, Wifi, WifiOff, CheckCircle2, XCircle, ChefHat, PackageCheck, Bike, MapPin, UserCheck, Truck, Handshake } from 'lucide-react'
 import { supabase, type Order, type OrderStatus } from '@/lib/supabase'
 import { usePOSStore, useOnlineOrders } from '@/store/usePOSStore'
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  new:              { label: 'طلب جديد',          color: 'bg-amber-100 text-amber-700 border-amber-200',    icon: <Bell size={13} /> },
-  accepted:         { label: 'مقبول',              color: 'bg-blue-100 text-blue-700 border-blue-200',       icon: <CheckCircle2 size={13} /> },
-  preparing:        { label: 'قيد التحضير',        color: 'bg-orange-100 text-orange-700 border-orange-200', icon: <ChefHat size={13} /> },
-  ready:            { label: 'جاهز',               color: 'bg-green-100 text-green-700 border-green-200',    icon: <PackageCheck size={13} /> },
-  driver_assigned:  { label: 'مندوب معيّن',        color: 'bg-purple-100 text-purple-700 border-purple-200', icon: <Bike size={13} /> },
-  at_restaurant:    { label: 'المندوب في المطعم',  color: 'bg-indigo-100 text-indigo-700 border-indigo-200', icon: <MapPin size={13} /> },
-  customer_arrived: { label: 'العميل وصل',         color: 'bg-teal-100 text-teal-700 border-teal-200',       icon: <UserCheck size={13} /> },
-  shipped:          { label: 'في الطريق',           color: 'bg-cyan-100 text-cyan-700 border-cyan-200',       icon: <Truck size={13} /> },
-  completed:        { label: 'مكتمل',              color: 'bg-gray-100 text-gray-600 border-gray-200',        icon: <CheckCircle2 size={13} /> },
-  cancelled:        { label: 'ملغي',               color: 'bg-red-100 text-red-600 border-red-200',           icon: <XCircle size={13} /> },
+  new:               { label: 'طلب جديد',           color: 'bg-amber-100 text-amber-700 border-amber-200',    icon: <Bell size={13} /> },
+  accepted:          { label: 'مقبول',               color: 'bg-blue-100 text-blue-700 border-blue-200',       icon: <CheckCircle2 size={13} /> },
+  preparing:         { label: 'قيد التحضير',         color: 'bg-orange-100 text-orange-700 border-orange-200', icon: <ChefHat size={13} /> },
+  ready:             { label: 'جاهز',                color: 'bg-green-100 text-green-700 border-green-200',    icon: <PackageCheck size={13} /> },
+  driver_assigned:   { label: 'مندوب معيّن',         color: 'bg-purple-100 text-purple-700 border-purple-200', icon: <Bike size={13} /> },
+  at_restaurant:     { label: 'المندوب في المطعم',   color: 'bg-indigo-100 text-indigo-700 border-indigo-200', icon: <MapPin size={13} /> },
+  handed_to_driver:  { label: 'سُلّم للمندوب',       color: 'bg-violet-100 text-violet-700 border-violet-200', icon: <Handshake size={13} /> },
+  customer_arrived:  { label: 'العميل وصل',          color: 'bg-teal-100 text-teal-700 border-teal-200',       icon: <UserCheck size={13} /> },
+  shipped:           { label: 'في الطريق',            color: 'bg-cyan-100 text-cyan-700 border-cyan-200',       icon: <Truck size={13} /> },
+  completed:         { label: 'مكتمل',               color: 'bg-gray-100 text-gray-600 border-gray-200',        icon: <CheckCircle2 size={13} /> },
+  cancelled:         { label: 'ملغي',                color: 'bg-red-100 text-red-600 border-red-200',           icon: <XCircle size={13} /> },
 }
 
 export default function OnlineOrdersNotification() {
@@ -26,6 +27,8 @@ export default function OnlineOrdersNotification() {
   const setConnected = usePOSStore((s) => s.setConnected)
   const isConnected = usePOSStore((s) => s.isConnected)
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
+  const [updatingOrderIds, setUpdatingOrderIds] = useState<Set<string>>(new Set())
+  const [activeTab, setActiveTab] = useState<'live' | 'history'>('live')
   const restaurantId = process.env.NEXT_PUBLIC_POS_RESTAURANT_ID
 
   const getTimestampForStatus = (status: OrderStatus): Record<string, string> => {
@@ -34,6 +37,7 @@ export default function OnlineOrdersNotification() {
       case 'ready':            return { ready_at: now }
       case 'driver_assigned':  return { driver_accepted_at: now }
       case 'at_restaurant':    return { arrived_at_store_at: now }
+      case 'handed_to_driver': return { handed_to_driver_at: now }
       case 'shipped':          return { shipped_at: now }
       case 'completed':        return { delivered_at: now }
       default:                 return {}
@@ -45,7 +49,10 @@ export default function OnlineOrdersNotification() {
     newStatus: OrderStatus,
     options?: { rejectReason?: string }
   ) => {
-    console.log('Sending update to Supabase...', orderId, newStatus)
+    // منع التحديث المتكرر إذا كان الطلب يُحدَّث بالفعل
+    if (updatingOrderIds.has(orderId)) return false
+
+    setUpdatingOrderIds((prev) => new Set(prev).add(orderId))
 
     const timestamps = getTimestampForStatus(newStatus)
 
@@ -54,43 +61,50 @@ export default function OnlineOrdersNotification() {
       .update({ status: newStatus, ...timestamps })
       .eq('id', orderId)
 
+    setUpdatingOrderIds((prev) => {
+      const next = new Set(prev)
+      next.delete(orderId)
+      return next
+    })
+
     if (error) {
       console.error('FAILED TO UPDATE SUPABASE:', error.message)
       alert('فشل تحديث الحالة في السيرفر: ' + error.message)
       return false
     }
 
-    console.log('SERVER UPDATED SUCCESSFULLY!')
-
-    usePOSStore.setState((state) => {
-      const nextOrders = state.onlineOrders.map((o) =>
-        o.id === orderId ? { ...o, status: newStatus, ...getTimestampForStatus(newStatus) } : o
-      )
-      const pending = nextOrders.filter((o) => o.status === 'new').length
-      return { onlineOrders: nextOrders, pendingCount: pending }
-    })
+    // لا يوجد تحديث محلي متفائل هنا — Realtime هو المصدر الوحيد للحقيقة.
+    // الـ subscription أدناه سيحدّث الـ store عند ورود حدث UPDATE من Supabase.
     return true
   }
-
-  const archivedOrders = useMemo(
-    () => onlineOrders.filter((order) => order.status === 'shipped'),
-    [onlineOrders]
-  )
 
   const activeOrders = useMemo(
     () =>
       onlineOrders.filter(
-        (order) =>
-          order.status !== 'completed' &&
-          order.status !== 'cancelled' &&
-          order.status !== 'shipped'
+        (order) => order.status !== 'completed' && order.status !== 'cancelled'
       ) as Order[],
     [onlineOrders]
   )
-  const selectedOrder = useMemo(
-    () => activeOrders.find((order) => order.id === selectedOrderId) ?? null,
-    [activeOrders, selectedOrderId]
+
+  const historyOrders = useMemo(
+    () =>
+      onlineOrders.filter(
+        (order) => order.status === 'completed' || order.status === 'cancelled'
+      ) as Order[],
+    [onlineOrders]
   )
+
+  const selectedOrder = useMemo(
+    () => onlineOrders.find((order) => order.id === selectedOrderId) ?? null,
+    [onlineOrders, selectedOrderId]
+  )
+
+  // إغلاق الـ sheet تلقائياً إذا اختفى الطلب من الـ store بالكامل
+  useEffect(() => {
+    if (selectedOrderId && !onlineOrders.find((o) => o.id === selectedOrderId)) {
+      setSelectedOrderId(null)
+    }
+  }, [onlineOrders, selectedOrderId])
 
   useEffect(() => {
     console.log('Supabase Env:', process.env.NEXT_PUBLIC_SUPABASE_URL)
@@ -104,20 +118,36 @@ export default function OnlineOrdersNotification() {
     const isTargetExternalOrder = (order: Partial<Order>) =>
       order.restaurant_id === restaurantId && order.order_source === 'customer_app'
 
-    // جلب الطلبات الأونلاين الحالية
+    // جلب الطلبات الأونلاين الحالية + سجل اليوم
     const fetchOrders = async () => {
-      const { data, error } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .eq('order_source', 'customer_app')
-        .not('status', 'in', '("completed","cancelled")')
-        .order('created_at', { ascending: false })
-        .limit(50)
+      const todayStart = new Date()
+      todayStart.setHours(0, 0, 0, 0)
 
-      if (!error && data) {
-        setOnlineOrders(data as Order[])
-      }
+      const [activeResult, historyResult] = await Promise.all([
+        supabase
+          .from('orders')
+          .select('*')
+          .eq('restaurant_id', restaurantId)
+          .eq('order_source', 'customer_app')
+          .not('status', 'in', '("completed","cancelled")')
+          .order('created_at', { ascending: false })
+          .limit(50),
+        supabase
+          .from('orders')
+          .select('*')
+          .eq('restaurant_id', restaurantId)
+          .eq('order_source', 'customer_app')
+          .in('status', ['completed', 'cancelled'])
+          .gte('created_at', todayStart.toISOString())
+          .order('created_at', { ascending: false })
+          .limit(30),
+      ])
+
+      const merged = [
+        ...((activeResult.data as Order[]) ?? []),
+        ...((historyResult.data as Order[]) ?? []),
+      ]
+      if (merged.length > 0) setOnlineOrders(merged)
     }
 
     fetchOrders()
@@ -145,11 +175,16 @@ export default function OnlineOrdersNotification() {
           if (payload.eventType === 'UPDATE') {
             const updated = payload.new as Order
             if (!isTargetExternalOrder(updated)) return
-            usePOSStore.getState().setOnlineOrders(
-              usePOSStore.getState().onlineOrders.map((o) =>
+            // تحديث atomic لتجنب race condition عند قراءة getState() مرتين
+            usePOSStore.setState((state) => {
+              const newOrders = state.onlineOrders.map((o) =>
                 o.id === updated.id ? updated : o
               )
-            )
+              return {
+                onlineOrders: newOrders,
+                pendingCount: newOrders.filter((o) => o.status === 'new').length,
+              }
+            })
           }
         }
       )
@@ -213,48 +248,100 @@ export default function OnlineOrdersNotification() {
         </div>
       </div>
 
+      {/* Tabs */}
+      <div className="flex border-b border-gray-100 px-4 pt-3 gap-1">
+        <button
+          onClick={() => setActiveTab('live')}
+          className={`relative flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-t-lg transition-colors ${
+            activeTab === 'live'
+              ? 'bg-white border border-b-white border-gray-100 text-[#24275D]'
+              : 'text-gray-400 hover:text-gray-600'
+          }`}
+        >
+          الطلبات الحية
+          {activeOrders.length > 0 && (
+            <span className="w-4 h-4 flex items-center justify-center rounded-full bg-[#D22128] text-white text-[9px] font-bold">
+              {activeOrders.length}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab('history')}
+          className={`flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-t-lg transition-colors ${
+            activeTab === 'history'
+              ? 'bg-white border border-b-white border-gray-100 text-[#24275D]'
+              : 'text-gray-400 hover:text-gray-600'
+          }`}
+        >
+          الطلبات السابقة
+          {historyOrders.length > 0 && (
+            <span className="w-4 h-4 flex items-center justify-center rounded-full bg-gray-300 text-gray-700 text-[9px] font-bold">
+              {historyOrders.length}
+            </span>
+          )}
+        </button>
+      </div>
+
       {/* Orders List */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-        <AnimatePresence initial={false}>
-          {activeOrders.length === 0 ? (
+        <AnimatePresence mode="wait" initial={false}>
+          {activeTab === 'live' ? (
+            activeOrders.length === 0 ? (
+              <motion.div
+                key="no-live-orders"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="flex flex-col items-center justify-center h-48 gap-3 text-gray-300"
+              >
+                <Bell size={48} strokeWidth={1.2} />
+                <p className="text-sm text-gray-400">لا توجد طلبات نشطة حالياً</p>
+              </motion.div>
+            ) : (
+              <motion.div key="live-list" className="space-y-3">
+                <AnimatePresence initial={false}>
+                  {activeOrders.map((order) => (
+                    <OnlineOrderCard
+                      key={order.id}
+                      order={order}
+                      isSelected={selectedOrderId === order.id}
+                      onClick={() => setSelectedOrderId(order.id)}
+                    />
+                  ))}
+                </AnimatePresence>
+              </motion.div>
+            )
+          ) : historyOrders.length === 0 ? (
             <motion.div
-              key="no-orders"
+              key="no-history"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
               className="flex flex-col items-center justify-center h-48 gap-3 text-gray-300"
             >
-              <Bell size={48} strokeWidth={1.2} />
-              <p className="text-sm text-gray-400">لا توجد طلبات خارجية حالياً</p>
+              <CheckCircle2 size={48} strokeWidth={1.2} />
+              <p className="text-sm text-gray-400">لا توجد طلبات سابقة اليوم</p>
             </motion.div>
           ) : (
-            activeOrders.map((order) => (
-              <OnlineOrderCard
-                key={order.id}
-                order={order}
-                isSelected={selectedOrderId === order.id}
-                onClick={() => setSelectedOrderId(order.id)}
-              />
-            ))
+            <motion.div key="history-list" className="space-y-3">
+              <AnimatePresence initial={false}>
+                {historyOrders.map((order) => (
+                  <OnlineOrderCard
+                    key={order.id}
+                    order={order}
+                    isSelected={selectedOrderId === order.id}
+                    onClick={() => setSelectedOrderId(order.id)}
+                  />
+                ))}
+              </AnimatePresence>
+            </motion.div>
           )}
         </AnimatePresence>
-
-        {archivedOrders.length > 0 && (
-          <div className="pt-4 border-t border-dashed border-slate-200 space-y-2">
-            <p className="text-[11px] font-semibold text-slate-500">طلبات في الطريق</p>
-            {archivedOrders.map((order) => (
-              <div
-                key={`archived-${order.id}`}
-                className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs text-cyan-800"
-              >
-                <span className="font-semibold">#{order.order_number}</span> · في الطريق إلى العميل
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
       <OnlineOrderDetailsSheet
         order={selectedOrder}
+        isUpdating={selectedOrder ? updatingOrderIds.has(selectedOrder.id) : false}
         onClose={() => setSelectedOrderId(null)}
         onAccept={async (orderId) => {
           const updated = await updateOrderStatus(orderId, 'accepted')
@@ -380,16 +467,26 @@ const NEXT_ACTION: Record<
   string,
   (orderType?: string) => { label: string; nextStatus: OrderStatus; colorClass: string } | null
 > = {
-  accepted:         () => ({ label: 'بدء التحضير', nextStatus: 'preparing',        colorClass: 'bg-blue-600 hover:bg-blue-700' }),
-  preparing:        () => ({ label: 'جاهز للاستلام', nextStatus: 'ready',          colorClass: 'bg-orange-600 hover:bg-orange-700' }),
+  accepted:         () => ({ label: 'جاري التحضير',      nextStatus: 'preparing',        colorClass: 'bg-blue-600 hover:bg-blue-700' }),
+  preparing:        () => ({ label: 'جاهز للتوصيل',      nextStatus: 'ready',            colorClass: 'bg-green-600 hover:bg-green-700' }),
+  // للتوصيل: الكاشير لا يتجاوز "جاهز" — المندوب يتولى الباقي من تطبيقه
   ready:            (type) =>
     type === 'delivery'
-      ? { label: 'تعيين مندوب توصيل', nextStatus: 'driver_assigned', colorClass: 'bg-purple-600 hover:bg-purple-700' }
-      : { label: 'وصل العميل',          nextStatus: 'customer_arrived', colorClass: 'bg-teal-600 hover:bg-teal-700' },
-  driver_assigned:  () => ({ label: 'المندوب وصل المطعم', nextStatus: 'at_restaurant', colorClass: 'bg-indigo-600 hover:bg-indigo-700' }),
-  at_restaurant:    () => ({ label: 'الطلب في الطريق',    nextStatus: 'shipped',        colorClass: 'bg-cyan-600 hover:bg-cyan-700' }),
-  customer_arrived: () => ({ label: 'تم التسليم للعميل ✅', nextStatus: 'completed',    colorClass: 'bg-emerald-600 hover:bg-emerald-700' }),
-  shipped:          () => ({ label: 'تم التوصيل ✅',       nextStatus: 'completed',     colorClass: 'bg-emerald-600 hover:bg-emerald-700' }),
+      ? null
+      : { label: 'وصل العميل', nextStatus: 'customer_arrived', colorClass: 'bg-teal-600 hover:bg-teal-700' },
+  customer_arrived: () => ({ label: 'تم التسليم للعميل ✅', nextStatus: 'completed', colorClass: 'bg-emerald-600 hover:bg-emerald-700' }),
+}
+
+const DELIVERY_STATUS_INFO: Record<
+  string,
+  { text: string; colorClass: string; icon: React.ReactNode }
+> = {
+  ready:            { text: 'بانتظار استلام المندوب',          colorClass: 'bg-green-50 border-green-300 text-green-800',      icon: <PackageCheck size={15} /> },
+  driver_assigned:  { text: 'المندوب في طريقه للمطعم',         colorClass: 'bg-purple-50 border-purple-300 text-purple-800',   icon: <Bike size={15} /> },
+  at_restaurant:    { text: 'المندوب جاهز للاستلام',             colorClass: 'bg-indigo-50 border-indigo-300 text-indigo-800',   icon: <MapPin size={15} /> },
+  handed_to_driver: { text: 'تم التسليم للمندوب ✓',            colorClass: 'bg-violet-50 border-violet-300 text-violet-800',   icon: <Handshake size={15} /> },
+  shipped:          { text: 'المندوب في الطريق للعميل',         colorClass: 'bg-cyan-50 border-cyan-300 text-cyan-800',         icon: <Truck size={15} /> },
+  completed:        { text: 'تم تسليم الطلب للعميل',           colorClass: 'bg-emerald-50 border-emerald-300 text-emerald-800', icon: <CheckCircle2 size={15} /> },
 }
 
 function OnlineOrderDetailsSheet({
@@ -398,17 +495,37 @@ function OnlineOrderDetailsSheet({
   onAccept,
   onCancel,
   onUpdateStatus,
+  isUpdating = false,
 }: {
   order: Order | null
   onClose: () => void
   onAccept: (orderId: string) => Promise<void>
   onCancel: (orderId: string) => Promise<void>
   onUpdateStatus: (orderId: string, status: OrderStatus) => Promise<void>
+  isUpdating?: boolean
 }) {
   if (!order) return null
 
   const statusCfg = STATUS_CONFIG[order.status] || STATUS_CONFIG.new
   const nextAction = NEXT_ACTION[order.status]?.(order.order_type)
+
+  // الحالات التي يظهر فيها شريط معلومات المندوب للتوصيل
+  const DELIVERY_DRIVER_STATES = ['ready', 'driver_assigned', 'at_restaurant', 'handed_to_driver', 'shipped', 'completed']
+  const isDeliveryWaitingDriver =
+    order.order_type === 'delivery' && DELIVERY_DRIVER_STATES.includes(order.status)
+  const deliveryStatusInfo = isDeliveryWaitingDriver
+    ? DELIVERY_STATUS_INFO[order.status]
+    : null
+
+  // زر "تم التسليم للمندوب" يظهر عند ready/driver_assigned/at_restaurant فقط
+  const HANDOFF_STATES = ['ready', 'driver_assigned', 'at_restaurant']
+  const showHandoffButton = order.order_type === 'delivery' && HANDOFF_STATES.includes(order.status)
+  // يُفعَّل الزر فقط عندما يكون المندوب في المطعم
+  const handoffEnabled = order.status === 'at_restaurant'
+
+  // الحالات التي لا يجوز فيها إلغاء الطلب
+  const NON_CANCELLABLE = ['new', 'completed', 'cancelled', 'handed_to_driver', 'shipped']
+  const canCancel = !NON_CANCELLABLE.includes(order.status)
 
   const orderTypeLabel: Record<string, string> = {
     delivery: 'توصيل',
@@ -488,38 +605,92 @@ function OnlineOrderDetailsSheet({
 
         {/* Actions */}
         <div className="p-4 border-t border-slate-100 flex flex-col gap-2">
-          {order.status === 'new' && (
-            <div className="flex gap-2">
-              <button
-                onClick={() => onAccept(order.id)}
-                className="bg-green-600 text-white p-3 rounded-lg flex-1 font-semibold hover:bg-green-700 transition-colors"
-              >
-                قبول الطلب
-              </button>
-              <button
-                onClick={() => onCancel(order.id)}
-                className="bg-red-600 text-white p-3 rounded-lg flex-1 font-semibold hover:bg-red-700 transition-colors"
-              >
-                رفض
-              </button>
-            </div>
-          )}
-
-          {nextAction && (
-            <button
-              onClick={() => onUpdateStatus(order.id, nextAction.nextStatus)}
-              className={`${nextAction.colorClass} text-white p-3 rounded-lg w-full font-semibold transition-colors`}
+          {/* مؤشر التحميل */}
+          {isUpdating && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-slate-100 text-slate-500 text-sm font-semibold"
             >
-              {nextAction.label}
-            </button>
+              <span className="w-3.5 h-3.5 rounded-full border-2 border-slate-400 border-t-transparent animate-spin" />
+              جارٍ التحديث…
+            </motion.div>
           )}
 
-          {order.status !== 'new' &&
-            order.status !== 'completed' &&
-            order.status !== 'cancelled' && (
+          {/* شريط حالة المندوب لطلبات التوصيل */}
+          {deliveryStatusInfo && (
+            <motion.div
+              key={order.status}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={`flex items-center gap-2.5 px-4 py-3.5 rounded-xl border font-semibold text-sm ${deliveryStatusInfo.colorClass}`}
+            >
+              {deliveryStatusInfo.icon}
+              <span>{deliveryStatusInfo.text}</span>
+            </motion.div>
+          )}
+
+          {/* أزرار الكاشير العادية (فقط للحالات غير المرتبطة بالمندوب) */}
+          {!deliveryStatusInfo && (
+            <>
+              {order.status === 'new' && (
+                <div className="flex gap-2">
+                  <button
+                    disabled={isUpdating}
+                    onClick={() => onAccept(order.id)}
+                    className="bg-green-600 text-white p-3 rounded-lg flex-1 font-semibold hover:bg-green-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    قبول الطلب
+                  </button>
+                  <button
+                    disabled={isUpdating}
+                    onClick={() => onCancel(order.id)}
+                    className="bg-red-600 text-white p-3 rounded-lg flex-1 font-semibold hover:bg-red-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    رفض
+                  </button>
+                </div>
+              )}
+
+              {nextAction && (
+                <button
+                  disabled={isUpdating}
+                  onClick={() => onUpdateStatus(order.id, nextAction.nextStatus)}
+                  className={`${nextAction.colorClass} text-white p-3 rounded-lg w-full font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed`}
+                >
+                  {nextAction.label}
+                </button>
+              )}
+            </>
+          )}
+
+          {/* زر تسليم الطلب للمندوب — الحماية القصوى */}
+          {showHandoffButton && (
+            <motion.button
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              disabled={isUpdating || !handoffEnabled}
+              onClick={() => onUpdateStatus(order.id, 'handed_to_driver')}
+              className={`flex items-center justify-center gap-2 p-3 rounded-xl w-full font-semibold text-sm transition-all
+                ${handoffEnabled
+                  ? 'bg-violet-600 hover:bg-violet-700 text-white shadow-md shadow-violet-200'
+                  : 'bg-violet-50 text-violet-300 border border-violet-200 cursor-not-allowed'
+                } disabled:opacity-60`}
+            >
+              <Handshake size={16} />
+              تم التسليم للمندوب
+              {!handoffEnabled && (
+                <span className="text-[10px] font-normal opacity-70">(بانتظار وصول المندوب)</span>
+              )}
+            </motion.button>
+          )}
+
+          {/* زر إلغاء الطلب */}
+          {canCancel && (
             <button
+              disabled={isUpdating}
               onClick={() => onCancel(order.id)}
-              className="border border-red-200 text-red-600 p-2.5 rounded-lg w-full text-xs font-semibold hover:bg-red-50 transition-colors"
+              className="border border-red-200 text-red-600 p-2.5 rounded-lg w-full text-xs font-semibold hover:bg-red-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               إلغاء الطلب
             </button>
